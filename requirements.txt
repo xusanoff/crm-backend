@@ -1,0 +1,10 @@
+flask
+flask-cors
+flask-bcrypt
+flask-jwt-extended
+flask-migrate
+flask-limiter
+flask-sqlalchemy
+psycopg2-binary
+pytz
+python-dateutil
