@@ -31,7 +31,11 @@ def create_app():
     app = Flask(__name__)
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS(app)
+    CORS(app,
+     origins=["https://your-frontend.vercel.app"],
+     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"],
+     supports_credentials=True)
 
     # ── DATABASE ──────────────────────────────────────────────────────────────
     app.config["SQLALCHEMY_DATABASE_URI"] = DB_URL
