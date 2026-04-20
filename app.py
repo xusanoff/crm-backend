@@ -72,7 +72,7 @@ def create_app():
         from models.student    import Student    # noqa
         from models.ernollmert import Enrollment # noqa
         from models.attendance import Attendance # noqa
-        from models.payment    import Payment, Debt  # noqa
+        from models.payment    import Payment, Debt, MonthlyDebt  # noqa
         from models.expense    import Expense    # noqa
         from models.teacher    import Teacher, TeacherSalary  # noqa
 
