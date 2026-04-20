@@ -8,7 +8,7 @@ from models.student     import Student
 from models.ernollmert  import Enrollment
 from models.group       import Group
 from models.cource      import Course
-from models.payment     import Payment, Debt, MonthlyDebt
+from models.payment     import Payment, Debt
 from utils.utils        import get_response
 from utils.decorators   import role_required
 
@@ -303,10 +303,9 @@ def enrollment_create():
 
     # Enrollment yaratish
     new_enrollment = Enrollment(
-        student_id  = student_id,
-        group_id    = group_id,
-        status      = "active",
-        enrolled_at = datetime.now().date()
+        student_id = student_id,
+        group_id   = group_id,
+        status     = "active"
     )
     db.session.add(new_enrollment)
     db.session.flush()  # ID olish uchun
@@ -319,27 +318,6 @@ def enrollment_create():
         total_amount  = total_debt
     )
     db.session.add(new_debt)
-    db.session.flush()  # debt.id olish uchun
-
-    # Har oy uchun alohida MonthlyDebt yaratish
-    # enrolled_at oyidan boshlab, duration_months ta yozuv
-    from dateutil.relativedelta import relativedelta
-    start_date    = new_enrollment.enrolled_at
-    monthly_price = course.price
-    monthly_debts_created = []
-    for i in range(course.duration_months):
-        month_date  = start_date + relativedelta(months=i)
-        month_label = month_date.strftime('%Y-%m')
-        md = MonthlyDebt(
-            debt_id      = new_debt.id,
-            student_id   = student_id,
-            month_label  = month_label,
-            month_number = i + 1,
-            amount       = monthly_price
-        )
-        db.session.add(md)
-        monthly_debts_created.append({'month_label': month_label, 'month_number': i+1, 'amount': monthly_price})
-
     db.session.commit()
 
     result = {
@@ -348,11 +326,10 @@ def enrollment_create():
             "total_amount":   total_debt,
             "paid_amount":    0.0,
             "remaining_debt": total_debt,
-            "monthly_debts":  monthly_debts_created,
             "info": (
                 f"{student.full_name} '{course.name}' kursiga yozildi. "
                 f"Jami qarz: {total_debt:,.0f} so'm "
-                f"({course.duration_months} oy × {monthly_price:,.0f} so'm/oy)"
+                f"({course.duration_months} oy × {course.price:,.0f} so'm)"
             )
         }
     }
@@ -473,22 +450,10 @@ def payment_create():
     )
     db.session.add(new_payment)
 
-    # Umumiy qarzdan ayirish
+    # Qarzdan ayirish
     if debt:
         debt.paid_amount += amount
         db.session.add(debt)
-
-        # Oylik qarzdan ham ayirish (for_month bo'yicha)
-        monthly_debt = MonthlyDebt.query.filter_by(
-            debt_id     = debt.id,
-            month_label = for_month
-        ).first()
-        if monthly_debt:
-            monthly_debt.paid_amount = min(
-                monthly_debt.amount,
-                monthly_debt.paid_amount + amount
-            )
-            db.session.add(monthly_debt)
 
     db.session.commit()
 
@@ -528,15 +493,6 @@ def payment_delete(payment_id):
         if debt:
             debt.paid_amount = max(0.0, debt.paid_amount - payment.amount)
             db.session.add(debt)
-
-            # Oylik qarzni ham qaytarish
-            monthly_debt = MonthlyDebt.query.filter_by(
-                debt_id     = payment.debt_id,
-                month_label = payment.for_month
-            ).first()
-            if monthly_debt:
-                monthly_debt.paid_amount = max(0.0, monthly_debt.paid_amount - payment.amount)
-                db.session.add(monthly_debt)
 
     db.session.delete(payment)
     db.session.commit()
