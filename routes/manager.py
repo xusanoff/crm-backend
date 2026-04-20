@@ -5,7 +5,7 @@ from models.user        import User
 from models.lesson      import Lesson
 from models.attendance  import Attendance
 from models.ernollmert  import Enrollment
-from models.payment     import Payment, Debt
+from models.payment     import Payment, Debt, MonthlyDebt
 from models.student     import Student
 from models.group       import Group
 from utils.utils        import get_response
@@ -374,3 +374,110 @@ def payments_summary():
         "online": {"total": online_total, "count": online_count, "types": {t: type_breakdown.get(t, {"total": 0, "count": 0}) for t in online_types}},
         "grand_total": grand_total,
     }, 200), 200
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD — Joriy oy qarz statistikasi
+# ══════════════════════════════════════════════════════════════════════════════
+
+@manager_bp.route("/dashboard/monthly-stats", methods=["GET"])
+@role_required(["ADMIN", "MANAGER"])
+def dashboard_monthly_stats():
+    """
+    Joriy oy uchun:
+    - Kutilayotgan jami to'lov (active enrollment'lar * oylik narx)
+    - Haqiqatda to'langan miqdor (joriy oy)
+    - Qolgan qarz (joriy oy)
+    - O'tgan oy qolgan qarzlari
+    - Har bir o'quvchining joriy oy holati
+    """
+    import pytz
+    from datetime import date
+    from dateutil.relativedelta import relativedelta
+
+    tz       = pytz.timezone('Asia/Tashkent')
+    today    = date.today()
+    cur_month = today.strftime('%Y-%m')
+    prev_month = (today.replace(day=1) - relativedelta(months=1)).strftime('%Y-%m')
+
+    # ── Joriy oy MonthlyDebt yig'indisi ──
+    cur_mds = MonthlyDebt.query.filter_by(month_label=cur_month).all()
+    cur_expected  = sum(md.amount      for md in cur_mds)
+    cur_paid      = sum(md.paid_amount for md in cur_mds)
+    cur_remaining = sum(md.remaining   for md in cur_mds)
+    cur_unpaid_count = sum(1 for md in cur_mds if not md.is_paid)
+    cur_paid_count   = sum(1 for md in cur_mds if md.is_paid)
+
+    # ── O'tgan oy qolgan qarzlari ──
+    prev_mds = MonthlyDebt.query.filter_by(month_label=prev_month).all()
+    prev_remaining   = sum(md.remaining for md in prev_mds)
+    prev_unpaid_students = []
+    for md in prev_mds:
+        if not md.is_paid:
+            student = Student.query.filter_by(id=md.student_id).first()
+            prev_unpaid_students.append({
+                'student_id':   md.student_id,
+                'student_name': student.full_name if student else '—',
+                'month_label':  md.month_label,
+                'amount':       md.amount,
+                'paid_amount':  md.paid_amount,
+                'remaining':    md.remaining,
+            })
+
+    # ── Joriy oy har bir o'quvchining holati ──
+    student_details = []
+    for md in cur_mds:
+        student = Student.query.filter_by(id=md.student_id).first()
+
+        # Enrollment topish — month_number ni olish uchun
+        debt = Debt.query.filter_by(id=md.debt_id).first()
+        enrollment = None
+        if debt:
+            enrollment = debt.enrollment
+
+        student_details.append({
+            'student_id':   md.student_id,
+            'student_name': student.full_name if student else '—',
+            'month_number': md.month_number,
+            'month_label':  md.month_label,
+            'amount':       md.amount,
+            'paid_amount':  md.paid_amount,
+            'remaining':    md.remaining,
+            'is_paid':      md.is_paid,
+        })
+
+    return get_response("Monthly Stats", {
+        "current_month": cur_month,
+        "prev_month":    prev_month,
+        "current": {
+            "expected":      cur_expected,
+            "paid":          cur_paid,
+            "remaining":     cur_remaining,
+            "paid_count":    cur_paid_count,
+            "unpaid_count":  cur_unpaid_count,
+            "students":      student_details,
+        },
+        "previous": {
+            "remaining":         prev_remaining,
+            "unpaid_students":   prev_unpaid_students,
+        },
+    }, 200), 200
+
+
+@manager_bp.route("/enrollments/with-month", methods=["GET"])
+@role_required(["ADMIN", "MANAGER", "OPERATOR"])
+def enrollments_with_month():
+    """
+    Barcha active enrollment'lar, har birida current_month_number ko'rsatiladi.
+    Frontend'dagi 'Ro'yxatga olinganlar' jadvalida N-oyda o'qiyapti ko'rsatish uchun.
+    """
+    enrollments = Enrollment.query.filter_by(status="active").all()
+    result = []
+    for e in enrollments:
+        base = Enrollment.to_dict(e)
+        base['student_name'] = e.student.full_name if e.student else '—'
+        base['group_name']   = e.group.name if e.group else '—'
+        base['course_name']  = e.group.course.name if (e.group and e.group.course) else '—'
+        base['duration_months'] = e.group.course.duration_months if (e.group and e.group.course) else None
+        result.append(base)
+    return get_response("Enrollments with month info", result, 200), 200
