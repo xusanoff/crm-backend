@@ -11,8 +11,12 @@ class Teacher(db.Model):
     id             = db.Column(db.Integer, primary_key=True)
     full_name      = db.Column(db.String(120), nullable=False)
     phone_number   = db.Column(db.String(20), unique=True, nullable=False)
-    salary_percent = db.Column(db.Float, nullable=False)   # Masalan: 20.0 = 20%
+    salary_percent = db.Column(db.Float, nullable=False)
     created_at     = db.Column(db.DateTime, default=lambda: datetime.now(time_zone))
+
+    # Teacher o'chirilsa => teacher_salaries ham o'chadi
+    salaries = db.relationship('TeacherSalary', backref='salary_teacher', lazy='dynamic',
+                                cascade='all, delete-orphan')
 
     def __init__(self, full_name, phone_number, salary_percent):
         super().__init__()
@@ -34,21 +38,22 @@ class Teacher(db.Model):
 class TeacherSalary(db.Model):
     """
     Guruh uchun bir oylik moliyaviy hisobot.
-    Har oy oxirida yoki admin so'raganda hisoblab chiqiladi.
     """
     __tablename__ = 'teacher_salaries'
 
-    id                  = db.Column(db.Integer, primary_key=True)
-    teacher_id          = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)
-    group_id            = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=False)
-    for_month           = db.Column(db.String(10), nullable=False)   # "2025-04"
-    total_payments      = db.Column(db.Float, default=0.0)           # Guruhdan jami yig'ilgan to'lov
-    teacher_salary      = db.Column(db.Float, default=0.0)           # O'qituvchi oyligi (foiz asosida)
-    net_profit          = db.Column(db.Float, default=0.0)           # Sof foyda
-    calculated_at       = db.Column(db.DateTime, default=lambda: datetime.now(time_zone))
+    id             = db.Column(db.Integer, primary_key=True)
+    teacher_id     = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    group_id       = db.Column(db.Integer, db.ForeignKey('groups.id',   ondelete='CASCADE'), nullable=False)
+    for_month      = db.Column(db.String(10), nullable=False)
+    total_payments = db.Column(db.Float, default=0.0)
+    teacher_salary = db.Column(db.Float, default=0.0)
+    net_profit     = db.Column(db.Float, default=0.0)
+    calculated_at  = db.Column(db.DateTime, default=lambda: datetime.now(time_zone))
 
-    teacher = db.relationship('Teacher', backref='salaries', lazy='joined')
-    group   = db.relationship('Group',   backref='teacher_salaries', lazy='joined')
+    # backref ishlatilmaydi — teacher.py da relationship aniqlangan
+    teacher = db.relationship('Teacher', foreign_keys=[teacher_id], lazy='joined')
+    group   = db.relationship('Group',   foreign_keys=[group_id],   lazy='joined',
+                               backref='group_teacher_salaries')
 
     def __init__(self, teacher_id, group_id, for_month, total_payments, teacher_salary, net_profit):
         super().__init__()
@@ -62,14 +67,14 @@ class TeacherSalary(db.Model):
     @staticmethod
     def to_dict(ts):
         return {
-            'id':               ts.id,
-            'teacher_id':       ts.teacher_id,
-            'teacher_name':     ts.teacher.full_name if ts.teacher else None,
-            'group_id':         ts.group_id,
-            'group_name':       ts.group.name if ts.group else None,
-            'for_month':        ts.for_month,
-            'total_payments':   ts.total_payments,
-            'teacher_salary':   ts.teacher_salary,
-            'net_profit':       ts.net_profit,
-            'calculated_at':    str(ts.calculated_at),
+            'id':             ts.id,
+            'teacher_id':     ts.teacher_id,
+            'teacher_name':   ts.teacher.full_name if ts.teacher else None,
+            'group_id':       ts.group_id,
+            'group_name':     ts.group.name if ts.group else None,
+            'for_month':      ts.for_month,
+            'total_payments': ts.total_payments,
+            'teacher_salary': ts.teacher_salary,
+            'net_profit':     ts.net_profit,
+            'calculated_at':  str(ts.calculated_at),
         }
