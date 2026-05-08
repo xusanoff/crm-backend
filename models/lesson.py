@@ -4,18 +4,21 @@ from models import db
 class Lesson(db.Model):
     __tablename__ = 'lessons'
 
-    id = db.Column(db.Integer, primary_key=True)
-
-    group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'))
-    lesson_date = db.Column(db.Date)
-    lesson_time = db.Column(db.Time)
-
-    # ── Bekor qilish / surish ─────────────────────────────────────────────────
+    id             = db.Column(db.Integer, primary_key=True)
+    group_id       = db.Column(db.Integer, db.ForeignKey('groups.id', ondelete='CASCADE'))
+    lesson_date    = db.Column(db.Date)
+    lesson_time    = db.Column(db.Time)
     is_cancelled   = db.Column(db.Boolean, default=False)
     cancel_reason  = db.Column(db.Text, nullable=True)
-    # Agar dars boshqa kunga surilgan bo'lsa, original sana saqlanadi
     original_date  = db.Column(db.Date, nullable=True)
-    is_rescheduled = db.Column(db.Boolean, default=False)  # surilgan dars belgisi
+    is_rescheduled = db.Column(db.Boolean, default=False)
+
+    # backref ishlatilmaydi — group.py da relationship aniqlangan
+    group = db.relationship('Group', foreign_keys=[group_id], lazy='joined')
+
+    # Lesson o'chirilsa => attendances ham o'chadi
+    attendances = db.relationship('Attendance', backref='attendance_lesson', lazy='dynamic',
+                                   cascade='all, delete-orphan')
 
     def __init__(self, group_id, lesson_date, lesson_time,
                  is_cancelled=False, cancel_reason=None,
