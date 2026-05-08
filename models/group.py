@@ -6,19 +6,25 @@ class Group(db.Model):
 
     id            = db.Column(db.Integer, primary_key=True)
     name          = db.Column(db.String(50), nullable=False)
-    course_id     = db.Column(db.Integer, db.ForeignKey('courses.id'), nullable=False)
+    course_id     = db.Column(db.Integer, db.ForeignKey('courses.id', ondelete='CASCADE'), nullable=False)
     teacher_name  = db.Column(db.String(100), nullable=True)   # Legacy / fallback
     teacher_id    = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
 
     schedule_type = db.Column(db.String(10), nullable=False)  # odd / even
     lesson_time   = db.Column(db.Time, nullable=False)
-    start_date    = db.Column(db.Date, nullable=True)         # guruh boshlanish sanasi
+    start_date    = db.Column(db.Date, nullable=True)
 
-    # Relationships
-    course   = db.relationship('Course',   backref='groups',  lazy='joined')
-    teacher  = db.relationship('Teacher',  backref='groups',  lazy='joined', foreign_keys=[teacher_id])
+    # backref nomlari group_course dan foydalaniladi (course.py da aniqlangan)
+    teacher = db.relationship('Teacher', backref='teacher_groups', lazy='joined', foreign_keys=[teacher_id])
 
-    def __init__(self, name, course_id, schedule_type, lesson_time, teacher_name=None, teacher_id=None, start_date=None):
+    # Group o'chirilsa => lessons va enrollments ham o'chadi
+    lessons     = db.relationship('Lesson',     backref='lesson_group',      lazy='dynamic',
+                                   cascade='all, delete-orphan')
+    enrollments = db.relationship('Enrollment', backref='enrollment_group',  lazy='dynamic',
+                                   cascade='all, delete-orphan')
+
+    def __init__(self, name, course_id, schedule_type, lesson_time,
+                 teacher_name=None, teacher_id=None, start_date=None):
         super().__init__()
         self.name          = name
         self.course_id     = course_id
@@ -30,22 +36,20 @@ class Group(db.Model):
 
     @property
     def end_date(self):
-        """Guruh tugash sanasi: start_date + course.duration_months"""
         from dateutil.relativedelta import relativedelta
-        if self.start_date and self.course and self.course.duration_months:
-            return self.start_date + relativedelta(months=self.course.duration_months)
+        if self.start_date and self.group_course and self.group_course.duration_months:
+            return self.start_date + relativedelta(months=self.group_course.duration_months)
         return None
 
     @property
     def duration_months(self):
-        return self.course.duration_months if self.course else None
+        return self.group_course.duration_months if self.group_course else None
 
     @staticmethod
     def to_dict(group):
         end_dt = group.end_date
-        # O'qituvchi ma'lumotlari: teacher_id bo'lsa u yerdan, aks holda teacher_name
-        t_name = None
-        t_phone = None
+        t_name    = None
+        t_phone   = None
         t_percent = None
         if group.teacher:
             t_name    = group.teacher.full_name
@@ -58,7 +62,7 @@ class Group(db.Model):
             'id':              group.id,
             'name':            group.name,
             'course_id':       group.course_id,
-            'course_name':     group.course.name if group.course else None,
+            'course_name':     group.group_course.name if group.group_course else None,
             'teacher_id':      group.teacher_id,
             'teacher_name':    t_name,
             'teacher_phone':   t_phone,
